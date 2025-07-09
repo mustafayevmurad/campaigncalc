@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Campaign Cost Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen py-8 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <!-- Header -->
+                <div class="flex items-center mb-8">
+                    <i data-lucide="calculator" class="w-8 h-8 text-blue-600 mr-3"></i>
+                    <h1 class="text-3xl font-bold text-gray-800">
+                        Marketing Campaign Cost Calculator
+                    </h1>
+                </div>
+
+                <!-- File Upload -->
+                <div id="uploadSection" class="mb-8 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 transition-colors cursor-pointer">
+                    <i data-lucide="upload" class="w-12 h-12 text-gray-400 mx-auto mb-4"></i>
+                    <label for="fileInput" class="cursor-pointer block">
+                        <span class="text-lg font-medium text-gray-700">Upload CSV or XLSX file with campaign data</span>
+                        <p class="text-sm text-blue-600 mt-2">Click to select file or drag and drop here</p>
+                        <input type="file" id="fileInput" accept=".csv,.xlsx" class="hidden">
+                    </label>
+                    <p class="text-sm text-gray-500 mt-4">
+                        Use this link to get the data: https://looker.wolt.com/explore/user_acquisition/campaigns_consolidated?qid=zBOXrQUhtrc2A8CmcGyO51&origin_space=9456&toggle=fil
+                    </p>
+                    <p class="text-sm text-gray-500 mt-4">
+                        File columns: A-number, B-campaign name, C-country, D-venue, E-start date, F-end date, 
+                        G-coverage %, H-amount covered, I-total GOV, J-order count, K-GOV per EUR
+                    </p>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="progressSection" class="hidden mb-8">
+                    <div class="bg-gray-200 rounded-full h-4 overflow-hidden">
+                        <div id="progressBar" class="bg-blue-600 h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <p id="progressText" class="text-sm text-gray-600 mt-2 text-center">Processing data...</p>
+                </div>
+
+                <!-- Date Filter (hidden until data loaded) -->
+                <div id="dateFilterSection" class="hidden mb-8 bg-gray-50 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Filter by Date Range</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Quick Select
+                            </label>
+                            <select id="datePreset" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <option value="all">All time</option>
+                                <option value="last3months">Last 3 months</option>
+                                <option value="last6months">Last 6 months</option>
+                                <option value="lastyear">Last year</option>
+                                <option value="custom">Custom range</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                From Date
+                            </label>
+                            <input type="date" id="fromDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                To Date
+                            </label>
+                            <input type="date" id="toDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    <button id="applyDateFilter" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Apply Filter
+                    </button>
+                    <p id="filterInfo" class="mt-3 text-sm text-gray-600"></p>
+                </div>
+
+                <!-- Calculator Form -->
+                <div id="calculatorSection" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="space-y-6">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Campaign Parameters</h2>
+                        
+                        <!-- Venue Selection -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Select Venues for Campaign
+                            </label>
+                            
+                            <div id="selectedVenues" class="flex flex-wrap gap-2 mb-3"></div>
+                            
+                            <div class="relative">
+                                <button id="venueDropdownBtn" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-left flex items-center justify-between hover:bg-gray-50">
+                                    <span id="venueDropdownText" class="text-gray-700">Select venues</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                                </button>
+                                
+                                <div id="venueDropdown" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                                    <div class="p-2">
+                                        <input type="text" id="venueSearch" placeholder="Search..." class="w-full px-3 py-1 border border-gray-200 rounded text-sm">
+                                    </div>
+                                    <div id="venueList" class="max-h-48 overflow-y-auto"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Budget Input -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Total Campaign Budget (EUR)
+                            </label>
+                            <input type="number" id="campaignBudget" placeholder="e.g., 5000" 
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <p class="text-sm text-gray-500 mt-1">
+                                Budget will be allocated proportionally based on historical performance
+                            </p>
+                        </div>
+                        
+                        <!-- Duration -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Campaign Duration (days)
+                            </label>
+                            <input type="number" id="campaignDuration" value="7" min="1" max="90"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <!-- Confidence Level -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Forecast Scenario
+                            </label>
+                            <select id="confidenceLevel" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="conservative">Conservative</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="optimistic">Optimistic</option>
+                            </select>
+                        </div>
+                        
+                        <button id="calculateBtn" class="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                            Calculate Forecast
+                        </button>
+                    </div>
+                    
+                    <!-- Results Section -->
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Forecast Results</h2>
+                        
+                        <div id="predictionResults" class="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
+                            <i data-lucide="bar-chart-3" class="w-12 h-12 mx-auto mb-4 text-gray-400"></i>
+                            <p>Fill in campaign parameters to get forecast</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let allData = [];
+        let filteredData = [];
+        let venueStats = {};
+        let selectedVenues = [];
+        let dateRange = { start: null, end: null };
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing...');
+            lucide.createIcons();
+            setupEventListeners();
+        });
+
+        // Setup all event listeners
+        function setupEventListeners() {
+            // File upload
+            const uploadSection = document.getElementById('uploadSection');
+            uploadSection.addEventListener('click', () => document.getElementById('fileInput').click());
+            
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+            document.getElementById('fileInput').addEventListener('click', e => e.stopPropagation());
+
+            // Drag and drop
+            uploadSection.addEventListener('dragover', handleDragOver);
+            uploadSection.addEventListener('dragleave', handleDragLeave);
+            uploadSection.addEventListener('drop', handleDrop);
+
+            // Date filter
+            document.getElementById('datePreset').addEventListener('change', handleDatePresetChange);
+            document.getElementById('applyDateFilter').addEventListener('click', applyDateFilter);
+
+            // Venue dropdown
+            document.getElementById('venueDropdownBtn').addEventListener('click', toggleVenueDropdown);
+            document.addEventListener('click', handleOutsideClick);
+            document.getElementById('venueSearch').addEventListener('input', handleVenueSearch);
+
+            // Budget and calculate
+            document.getElementById('campaignBudget').addEventListener('input', updateBudgetInfo);
+            document.getElementById('calculateBtn').addEventListener('click', calculatePrediction);
+        }
+
+        // File handling
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) processFile(file);
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('border-blue-500', 'bg-blue-50');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50');
+            if (e.dataTransfer.files.length > 0) {
+                processFile(e.dataTransfer.files[0]);
+            }
+        }
+
+        // Process file
+        function processFile(file) {
+            const fileName = file.name.toLowerCase();
+            showProgress(0, 'Starting file processing...');
+            
+            if (fileName.endsWith('.csv')) {
+                processCSV(file);
+            } else if (fileName.endsWith('.xlsx')) {
+                processXLSX(file);
+            } else {
+                hideProgress();
+                alert('Please upload a CSV or XLSX file');
+            }
+        }
+
+        // Process CSV
+        function processCSV(file) {
+            let tempData = [];
+            Papa.parse(file, {
+                header: false,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                chunk: function(results) {
+                    results.data.forEach(row => {
+                        if (row.length >= 11) tempData.push(row);
+                    });
+                    showProgress(30, `Reading data... ${tempData.length} rows`);
+                },
+                complete: function() {
+                    showProgress(50, 'Processing data...');
+                    setTimeout(() => {
+                        const processedData = processRawData(tempData);
+                        if (processedData.length > 0) {
+                            allData = processedData;
+                            filteredData = [...allData];
+                            finishProcessing();
+                        } else {
+                            hideProgress();
+                            alert('No valid data found in file');
+                        }
+                    }, 100);
+                },
+                error: function(error) {
+                    hideProgress();
+                    alert('Error reading CSV file: ' + error.message);
+                }
+            });
+        }
+
+        // Process XLSX
+        function processXLSX(file) {
+            showProgress(10, 'Reading Excel file...');
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    showProgress(30, 'Parsing data...');
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rawData = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: null});
+                    
+                    showProgress(50, 'Processing data...');
+                    setTimeout(() => {
+                        const processedData = processRawData(rawData);
+                        if (processedData.length > 0) {
+                            allData = processedData;
+                            filteredData = [...allData];
+                            finishProcessing();
+                        } else {
+                            hideProgress();
+                            alert('No valid data found in file');
+                        }
+                    }, 100);
+                } catch (error) {
+                    hideProgress();
+                    alert('Error reading Excel file: ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Process raw data
+        function processRawData(rawData) {
+            console.log('Processing raw data, total rows:', rawData.length);
+            if (rawData.length < 2) return [];
+            
+            // Check if first row is header
+            const firstRow = rawData[0];
+            const isHeader = isNaN(parseFloat(firstRow[7])) || isNaN(parseFloat(firstRow[8]));
+            const startIndex = isHeader ? 1 : 0;
+            
+            console.log('First row is', isHeader ? 'header' : 'data', 'starting from index', startIndex);
+            if (startIndex < rawData.length) {
+                console.log('Sample row:', rawData[startIndex]);
+            }
+            
+            const processedData = [];
+            let skippedRows = 0;
+            
+            for (let i = startIndex; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (!row || row.length < 11) {
+                    skippedRows++;
+                    continue;
+                }
+                
+                // Parse values - note K column (index 10) now has GOV per EUR
+                const amountCovered = parseFloat(row[7]); // H
+                const govTotal = parseFloat(row[8]); // I
+                const orderCount = parseInt(row[9]) || 0; // J
+                const govPerEur = parseFloat(row[10]); // K
+                
+                // Validate
+                if (isNaN(amountCovered) || isNaN(govTotal) || amountCovered <= 0 || govTotal <= 0) {
+                    skippedRows++;
+                    continue;
+                }
+                
+                // Parse dates
+                let startDate = null, endDate = null, duration = 7;
+                try {
+                    if (row[4]) startDate = new Date(row[4]);
+                    if (row[5]) endDate = new Date(row[5]);
+                    if (startDate && endDate && !isNaN(startDate) && !isNaN(endDate)) {
+                        duration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+                        if (duration < 1 || duration > 365) duration = 7;
+                    }
+                } catch (e) {
+                    // Keep defaults
+                }
+                
+                const venueName = row[3] || 'Unknown';
+                
+                processedData.push({
+                    'Campaign Name': row[1] || '',
+                    'Country': row[2] || '',
+                    'Venue Name': venueName,
+                    'Start Date': startDate,
+                    'End Date': endDate,
+                    'Coverage Percentage': parseFloat(row[6]) || 100,
+                    'Amount Covered': amountCovered,
+                    'GOV Total': govTotal,
+                    'Order Count': orderCount,
+                    'GOV per EUR': govPerEur || (govTotal / amountCovered),
+                    'Duration': duration
+                });
+            }
+            
+            console.log('Processed', processedData.length, 'valid rows, skipped', skippedRows, 'invalid rows');
+            
+            // Log sample venues
+            const sampleVenues = [...new Set(processedData.slice(0, 10).map(d => d['Venue Name']))];
+            console.log('Sample venues:', sampleVenues);
+            
+            return processedData;
+        }
+
+        // Finish processing
+        function finishProcessing() {
+            showProgress(70, 'Calculating statistics...');
+            updateDateRange();
+            calculateVenueStats();
+            showProgress(100, 'Done!');
+            
+            setTimeout(() => {
+                hideProgress();
+                updateUI();
+            }, 500);
+        }
+
+        // Update date range from data
+        function updateDateRange() {
+            // Get all dates (both start and end)
+            const allDates = [];
+            allData.forEach(d => {
+                if (d['Start Date'] && !isNaN(d['Start Date'])) {
+                    allDates.push(d['Start Date']);
+                }
+                if (d['End Date'] && !isNaN(d['End Date'])) {
+                    allDates.push(d['End Date']);
+                }
+            });
+            
+            allDates.sort((a, b) => a - b);
+            
+            if (allDates.length > 0) {
+                const minDate = allDates[0];
+                const maxDate = allDates[allDates.length - 1];
+                
+                console.log('Date range in data:', {
+                    min: minDate.toISOString(),
+                    max: maxDate.toISOString()
+                });
+                
+                // Set min/max for date inputs
+                const minDateStr = minDate.toISOString().split('T')[0];
+                const maxDateStr = maxDate.toISOString().split('T')[0];
+                
+                document.getElementById('fromDate').min = minDateStr;
+                document.getElementById('fromDate').max = maxDateStr;
+                document.getElementById('toDate').min = minDateStr;
+                document.getElementById('toDate').max = maxDateStr;
+                
+                // Set default to show all data initially
+                document.getElementById('fromDate').value = '';
+                document.getElementById('toDate').value = '';
+                document.getElementById('datePreset').value = 'all';
+            }
+        }
+
+        // Date filter handlers
+        function handleDatePresetChange(e) {
+            const preset = e.target.value;
+            const today = new Date();
+            let fromDate = new Date();
+            
+            switch(preset) {
+                case 'last3months':
+                    fromDate.setMonth(today.getMonth() - 3);
+                    break;
+                case 'last6months':
+                    fromDate.setMonth(today.getMonth() - 6);
+                    break;
+                case 'lastyear':
+                    fromDate.setFullYear(today.getFullYear() - 1);
+                    break;
+                case 'all':
+                    fromDate = null;
+                    break;
+                case 'custom':
+                    return; // Don't update dates
+            }
+            
+            if (fromDate) {
+                document.getElementById('fromDate').value = fromDate.toISOString().split('T')[0];
+                document.getElementById('toDate').value = today.toISOString().split('T')[0];
+            }
+        }
+
+        function applyDateFilter() {
+            const fromDateStr = document.getElementById('fromDate').value;
+            const toDateStr = document.getElementById('toDate').value;
+            
+            let fromDate = null;
+            let toDate = null;
+            
+            if (fromDateStr) {
+                fromDate = new Date(fromDateStr);
+                fromDate.setHours(0, 0, 0, 0); // Start of day
+            }
+            
+            if (toDateStr) {
+                toDate = new Date(toDateStr);
+                toDate.setHours(23, 59, 59, 999); // End of day
+            }
+            
+            if (fromDate && toDate && fromDate > toDate) {
+                alert('From date must be before To date');
+                return;
+            }
+            
+            dateRange = { start: fromDate, end: toDate };
+            
+            // Filter data - use campaign end date for filtering
+            if (fromDate || toDate) {
+                filteredData = allData.filter(d => {
+                    // Use end date if available, otherwise use start date
+                    const campaignDate = d['End Date'] || d['Start Date'];
+                    
+                    // If no date on campaign, include it
+                    if (!campaignDate) return true;
+                    
+                    // Check date range
+                    if (fromDate && campaignDate < fromDate) return false;
+                    if (toDate && campaignDate > toDate) return false;
+                    return true;
+                });
+            } else {
+                // No filter - use all data
+                filteredData = [...allData];
+            }
+            
+            // Update filter info
+            const filterInfo = document.getElementById('filterInfo');
+            filterInfo.textContent = `Showing ${filteredData.length} of ${allData.length} campaigns`;
+            
+            console.log('Date filter applied:', {
+                fromDate: fromDate ? fromDate.toISOString() : 'none',
+                toDate: toDate ? toDate.toISOString() : 'none',
+                filteredCount: filteredData.length,
+                totalCount: allData.length
+            });
+            
+            // Recalculate stats with filtered data
+            calculateVenueStats();
+            populateVenueList();
+        }
+
+        // Calculate venue statistics
+        function calculateVenueStats() {
+            const dataToUse = filteredData.length > 0 ? filteredData : allData;
+            console.log('Calculating stats for', dataToUse.length, 'records');
+            
+            const venueGroups = _.groupBy(dataToUse, 'Venue Name');
+            console.log('Found venues:', Object.keys(venueGroups).length);
+            
+            venueStats = {};
+            
+            Object.entries(venueGroups).forEach(([venue, campaigns]) => {
+                if (campaigns.length > 0 && venue && venue !== 'undefined') {
+                    const amounts = campaigns.map(c => c['Amount Covered']).filter(v => !isNaN(v) && v > 0);
+                    const govs = campaigns.map(c => c['GOV Total']).filter(v => !isNaN(v) && v > 0);
+                    const govPerEur = campaigns.map(c => c['GOV per EUR']).filter(v => !isNaN(v) && v > 0);
+                    const orderCounts = campaigns.map(c => c['Order Count']).filter(v => !isNaN(v));
+                    const durations = campaigns.map(c => c['Duration']).filter(v => !isNaN(v) && v > 0);
+                    
+                    if (amounts.length === 0 || govs.length === 0) {
+                        console.log('Skipping venue', venue, 'due to no valid data');
+                        return;
+                    }
+                    
+                    // Group by duration
+                    const durationGroups = {
+                        short: campaigns.filter(c => c['Duration'] <= 7),
+                        medium: campaigns.filter(c => c['Duration'] > 7 && c['Duration'] <= 14),
+                        long: campaigns.filter(c => c['Duration'] > 14)
+                    };
+                    
+                    const durationStats = {};
+                    Object.entries(durationGroups).forEach(([range, camps]) => {
+                        if (camps.length > 0) {
+                            const rangeGovPerEur = camps.map(c => c['GOV per EUR']).filter(v => !isNaN(v) && v > 0);
+                            if (rangeGovPerEur.length > 0) {
+                                durationStats[range] = {
+                                    count: camps.length,
+                                    avgGovPerEur: _.mean(rangeGovPerEur),
+                                    medianGovPerEur: rangeGovPerEur.sort((a,b) => a-b)[Math.floor(rangeGovPerEur.length/2)]
+                                };
+                            }
+                        }
+                    });
+                    
+                    venueStats[venue] = {
+                        campaignCount: campaigns.length,
+                        totalAmount: _.sum(amounts),
+                        totalGOV: _.sum(govs),
+                        totalOrders: _.sum(orderCounts),
+                        avgAmount: _.mean(amounts),
+                        avgGOV: _.mean(govs),
+                        avgGovPerEur: govPerEur.length > 0 ? _.mean(govPerEur) : (_.sum(govs) / _.sum(amounts)),
+                        minGovPerEur: govPerEur.length > 0 ? _.min(govPerEur) : (_.sum(govs) / _.sum(amounts)),
+                        maxGovPerEur: govPerEur.length > 0 ? _.max(govPerEur) : (_.sum(govs) / _.sum(amounts)),
+                        stdDevGovPerEur: govPerEur.length > 1 ? 
+                            Math.sqrt(_.sum(govPerEur.map(r => Math.pow(r - _.mean(govPerEur), 2))) / govPerEur.length) : 0,
+                        medianGovPerEur: govPerEur.length > 0 ? 
+                            govPerEur.sort((a,b) => a-b)[Math.floor(govPerEur.length/2)] : 
+                            (_.sum(govs) / _.sum(amounts)),
+                        avgDuration: durations.length > 0 ? _.mean(durations) : 7,
+                        durationStats: durationStats
+                    };
+                }
+            });
+            
+            console.log('Calculated stats for', Object.keys(venueStats).length, 'venues');
+        }
+
+        // Update UI
+        function updateUI() {
+            // Update upload section
+            document.getElementById('uploadSection').classList.add('bg-green-50');
+            document.getElementById('uploadSection').innerHTML = `
+                <div class="flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-8 h-8 text-green-600 mr-3"></i>
+                    <span class="text-lg font-medium text-green-700">Data successfully loaded</span>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">
+                    Loaded ${allData.length.toLocaleString()} records from ${Object.keys(venueStats).length.toLocaleString()} venues
+                </p>
+                <button onclick="location.reload()" class="mt-3 text-sm text-blue-600 hover:text-blue-800">
+                    Load another file
+                </button>
+            `;
+            
+            // Show date filter and calculator
+            document.getElementById('dateFilterSection').classList.remove('hidden');
+            document.getElementById('calculatorSection').classList.remove('hidden');
+            
+            // Initially show all data (no date filter)
+            filteredData = [...allData];
+            calculateVenueStats();
+            populateVenueList();
+            
+            // Update filter info
+            document.getElementById('filterInfo').textContent = `Showing ${filteredData.length} of ${allData.length} campaigns`;
+            
+            // Re-create icons
+            lucide.createIcons();
+        }
+
+        // Progress bar
+        function showProgress(percent, text) {
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        function hideProgress() {
+            document.getElementById('progressSection').classList.add('hidden');
+        }
+
+        // Venue selection
+        function populateVenueList() {
+            console.log('Populating venue list, total venues:', Object.keys(venueStats).length);
+            
+            const sortedVenues = Object.entries(venueStats)
+                .filter(([venue, stats]) => venue && venue !== 'undefined' && stats.totalGOV > 0)
+                .sort((a, b) => b[1].totalGOV - a[1].totalGOV) // Sort by total GOV
+                .map(([venue]) => venue);
+            
+            console.log('Sorted venues:', sortedVenues.length);
+            
+            window.allVenues = sortedVenues;
+            
+            if (sortedVenues.length === 0) {
+                document.getElementById('venueList').innerHTML = `
+                    <div class="px-4 py-2 text-sm text-gray-500 text-center">
+                        No venues found. Check your data format.
+                    </div>
+                `;
+            } else {
+                updateVenueDropdown(sortedVenues.slice(0, 50));
+            }
+        }
+
+        function updateVenueDropdown(venues) {
+            const venueList = document.getElementById('venueList');
+            let html = '';
+            
+            venues.forEach(venue => {
+                const stats = venueStats[venue];
+                const isSelected = selectedVenues.includes(venue);
+                html += `
+                    <div onclick="toggleVenue('${venue.replace(/'/g, "\\'")}')" 
+                        class="venue-item w-full px-4 py-2 text-left hover:bg-gray-100 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm">${venue}</span>
+                            <span class="text-xs text-gray-500">
+                                ${stats.campaignCount} campaigns | €${stats.totalGOV.toFixed(0)} GOV
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            if (window.allVenues && window.allVenues.length > venues.length) {
+                html += `
+                    <div class="px-4 py-2 text-sm text-gray-500 text-center">
+                        Showing ${venues.length} of ${window.allVenues.length}. Use search.
+                    </div>
+                `;
+            }
+            
+            venueList.innerHTML = html;
+        }
+
+        function toggleVenue(venue) {
+            if (selectedVenues.includes(venue)) {
+                selectedVenues = selectedVenues.filter(v => v !== venue);
+            } else {
+                selectedVenues.push(venue);
+            }
+            updateSelectedVenuesDisplay();
+            updateBudgetInfo();
+            
+            // Update dropdown to reflect selection
+            if (!document.getElementById('venueDropdown').classList.contains('hidden')) {
+                const searchTerm = document.getElementById('venueSearch').value;
+                if (searchTerm) {
+                    handleVenueSearch({ target: { value: searchTerm } });
+                } else {
+                    updateVenueDropdown(window.allVenues.slice(0, 50));
+                }
+            }
+        }
+
+        function updateSelectedVenuesDisplay() {
+            const container = document.getElementById('selectedVenues');
+            container.innerHTML = selectedVenues.map(venue => `
+                <div class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center">
+                    <span>${venue}</span>
+                    <div onclick="removeVenue('${venue.replace(/'/g, "\\'")}')" class="ml-2 hover:text-blue-900 cursor-pointer">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </div>
+                </div>
+            `).join('');
+            
+            document.getElementById('venueDropdownText').textContent = 
+                selectedVenues.length > 0 ? `Selected: ${selectedVenues.length}` : 'Select venues';
+            
+            lucide.createIcons();
+        }
+
+        function removeVenue(venue) {
+            selectedVenues = selectedVenues.filter(v => v !== venue);
+            updateSelectedVenuesDisplay();
+            updateBudgetInfo();
+        }
+
+        // Dropdown handlers
+        // ▼ replace the old function completely
+function toggleVenueDropdown(e) {
+  e.stopPropagation();                        // keep click from bubbling to <body>
+  const dropdown = document.getElementById('venueDropdown');
+  const icon     = document.getElementById('venueDropdownIcon');
+
+  if (dropdown.classList.contains('hidden')) {     // opening
+      dropdown.classList.remove('hidden');
+      icon.setAttribute('data-lucide', 'chevron-up');
+      document.getElementById('venueSearch').focus();
+  } else {                                         // closing
+      dropdown.classList.add('hidden');
+      icon.setAttribute('data-lucide', 'chevron-down');
+  }
+  lucide.createIcons();                            // redraw the chevron we just changed
+}
+
+document.getElementById('venueDropdownBtn')
+        .addEventListener('click', toggleVenueDropdown);
+
+// ▼ patch the helper that closes the menu when you click elsewhere
+function handleOutsideClick(e) {
+  const dropdown = document.getElementById('venueDropdown');
+  const btn      = document.getElementById('venueDropdownBtn');
+
+  if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+      const icon = document.getElementById('venueDropdownIcon');
+      if (icon) {                                 // ← guard against null
+          icon.setAttribute('data-lucide', 'chevron-down');
+          lucide.createIcons();
+      }
+  }
+}
+
+        let searchTimeout;
+        function handleVenueSearch(e) {
+            clearTimeout(searchTimeout);
+            const searchTerm = e.target.value.toLowerCase();
+            
+            searchTimeout = setTimeout(() => {
+                const filteredVenues = window.allVenues
+                    .filter(venue => venue.toLowerCase().includes(searchTerm))
+                    .slice(0, 50);
+                
+                updateVenueDropdown(filteredVenues);
+            }, 300);
+        }
+
+        // Budget info update
+        function updateBudgetInfo() {
+            // This will be used to show proportional allocation
+        }
+
+        // Calculate prediction
+        function calculatePrediction() {
+            const totalBudget = parseFloat(document.getElementById('campaignBudget').value);
+            const duration = parseInt(document.getElementById('campaignDuration').value);
+            const confidenceLevel = document.getElementById('confidenceLevel').value;
+            
+            if (!totalBudget || selectedVenues.length === 0) {
+                alert('Please select venues and enter budget');
+                return;
+            }
+            
+            // Calculate proportional budget allocation based on historical performance
+            const selectedVenueStats = selectedVenues.map(v => ({
+                venue: v,
+                stats: venueStats[v]
+            }));
+            
+            // Calculate weight for each venue based on historical GOV
+            const totalHistoricalGOV = selectedVenueStats.reduce((sum, v) => sum + v.stats.totalGOV, 0);
+            
+            let venueDetails = [];
+            let totalExpectedGOV = 0;
+            let totalMinGOV = 0;
+            let totalMaxGOV = 0;
+            
+            selectedVenueStats.forEach(({ venue, stats }) => {
+                // Proportional budget allocation based on historical performance
+                const venueWeight = stats.totalGOV / totalHistoricalGOV;
+                const venueBudget = totalBudget * venueWeight;
+                
+                // Get GOV per EUR for the specific duration
+                let venueGovPerEur, venueMinGovPerEur, venueMaxGovPerEur;
+                let durationCategory;
+                
+                if (duration <= 7) durationCategory = 'short';
+                else if (duration <= 14) durationCategory = 'medium';
+                else durationCategory = 'long';
+                
+                // Use duration-specific data if available
+                if (stats.durationStats && stats.durationStats[durationCategory]) {
+                    venueGovPerEur = stats.durationStats[durationCategory].medianGovPerEur || 
+                                     stats.durationStats[durationCategory].avgGovPerEur;
+                } else {
+                    venueGovPerEur = stats.medianGovPerEur || stats.avgGovPerEur;
+                }
+                
+                // Set min/max based on confidence level
+                if (confidenceLevel === 'conservative') {
+                    venueMinGovPerEur = stats.minGovPerEur;
+                    venueMaxGovPerEur = venueGovPerEur;
+                } else if (confidenceLevel === 'optimistic') {
+                    venueMinGovPerEur = venueGovPerEur;
+                    venueMaxGovPerEur = stats.maxGovPerEur;
+                } else {
+                    const stdDev = stats.stdDevGovPerEur || 0;
+                    venueMinGovPerEur = Math.max(stats.minGovPerEur, venueGovPerEur - stdDev);
+                    venueMaxGovPerEur = Math.min(stats.maxGovPerEur, venueGovPerEur + stdDev);
+                }
+                
+                const expectedGOV = venueBudget * venueGovPerEur;
+                const minGOV = venueBudget * venueMinGovPerEur;
+                const maxGOV = venueBudget * venueMaxGovPerEur;
+                
+                totalExpectedGOV += expectedGOV;
+                totalMinGOV += minGOV;
+                totalMaxGOV += maxGOV;
+                
+                venueDetails.push({
+                    name: venue,
+                    budget: venueBudget,
+                    weight: venueWeight * 100,
+                    expectedGOV: expectedGOV,
+                    minGOV: minGOV,
+                    maxGOV: maxGOV,
+                    govPerEur: venueGovPerEur,
+                    historicalCampaigns: stats.campaignCount,
+                    historicalGOV: stats.totalGOV,
+                    historicalOrders: stats.totalOrders
+                });
+            });
+            
+            // Sort by budget allocation
+            venueDetails.sort((a, b) => b.budget - a.budget);
+            
+            displayPrediction({
+                totalBudget: totalBudget,
+                expectedGOV: totalExpectedGOV,
+                minGOV: totalMinGOV,
+                maxGOV: totalMaxGOV,
+                govPerEur: totalExpectedGOV / totalBudget,
+                minGovPerEur: totalMinGOV / totalBudget,
+                maxGovPerEur: totalMaxGOV / totalBudget,
+                venueDetails: venueDetails
+            });
+        }
+
+        // Display prediction results
+        function displayPrediction(prediction) {
+            const resultsHTML = `
+                <div class="space-y-4">
+                    <div class="bg-gray-50 rounded-lg p-6">
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Total Investment:</span>
+                                <span class="font-bold text-lg">€${prediction.totalBudget.toFixed(2)}</span>
+                            </div>
+                            
+                            <div class="border-t pt-3">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-gray-600">Expected GOV:</span>
+                                    <span class="font-bold text-xl text-blue-600">
+                                        €${prediction.expectedGOV.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div class="text-sm text-gray-500">
+                                    Range: €${prediction.minGOV.toFixed(2)} - €${prediction.maxGOV.toFixed(2)}
+                                </div>
+                            </div>
+                            
+                            <div class="border-t pt-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Overall Efficiency (GOV per EUR):</span>
+                                    <span class="font-bold text-lg text-purple-600">
+                                        ${prediction.govPerEur.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div class="text-sm text-gray-500">
+                                    Range: ${prediction.minGovPerEur.toFixed(2)} - ${prediction.maxGovPerEur.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <h3 class="font-medium text-gray-800">Budget Allocation by Venue:</h3>
+                        ${prediction.venueDetails.map(venue => `
+                            <div class="bg-blue-50 rounded-lg p-4">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="font-medium text-gray-800">${venue.name}</div>
+                                    <div class="text-sm text-gray-600">${venue.weight.toFixed(1)}% of budget</div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                        <span class="text-gray-600">Allocated Budget:</span>
+                                        <span class="font-semibold ml-1">€${venue.budget.toFixed(0)}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-600">Expected GOV:</span>
+                                        <span class="font-semibold ml-1">€${venue.expectedGOV.toFixed(0)}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-600">GOV per EUR:</span>
+                                        <span class="font-semibold ml-1">${venue.govPerEur.toFixed(2)}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-600">Historical Data:</span>
+                                        <span class="font-semibold ml-1">${venue.historicalCampaigns} campaigns</span>
+                                    </div>
+                                </div>
+                                <div class="mt-2 text-xs text-gray-500">
+                                    Historical performance: €${venue.historicalGOV.toFixed(0)} GOV, ${venue.historicalOrders.toLocaleString()} orders
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="mt-4 p-3 bg-yellow-50 rounded-lg text-sm text-gray-700">
+                        <strong>Note:</strong> Budget is allocated proportionally based on each venue's historical GOV performance.
+                        Venues with higher historical GOV receive a larger share of the budget.
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('predictionResults').innerHTML = resultsHTML;
+        }
+
+        // Global functions for onclick handlers
+        window.toggleVenue = toggleVenue;
+        window.removeVenue = removeVenue;
+    </script>
+</body>
+</html>
