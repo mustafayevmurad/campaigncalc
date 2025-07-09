@@ -170,6 +170,11 @@
         let selectedVenues = [];
         let dateRange = { start: null, end: null };
 
+        // --- Excel serial number → JS Date (день 0 = 1899-12-31) ---
+        function excelSerialToDate(serial){
+            return new Date(Math.round((serial - 25569) * 86400 * 1000));
+        }
+
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Page loaded, initializing...');
@@ -288,7 +293,12 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
                     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const rawData = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: null});
+                    const rawData = XLSX.utils.sheet_to_json(firstSheet, {
+                                    header: 1,
+                                    defval: null,
+                                    raw: false,        // применить формат ячейки
+                                    cellDates: true    // и превратить даты в объекты Date
+                                });
                     
                     showProgress(50, 'Processing data...');
                     setTimeout(() => {
@@ -348,17 +358,29 @@
                 }
                 
                 // Parse dates
-                let startDate = null, endDate = null, duration = 7;
+                // --- Parse dates (учитываем числа-серийники и строки) ---
+                let startDate = row[4];
+                let endDate   = row[5];
+                let duration  = 7;
+
+                // 1) если пришло число-серийник из Excel
+                if (typeof startDate === 'number') startDate = excelSerialToDate(startDate);
+                if (typeof endDate   === 'number') endDate   = excelSerialToDate(endDate);
+
+                // 2) если пришла строка формата DD.MM.YYYY или DD/MM/YYYY – превращаем в ISO
+                const fixStrDate = str => {
+                    const m = String(str).match(/^(\d{2})[./](\d{2})[./](\d{4})$/);
+                    return m ? `${m[3]}-${m[2]}-${m[1]}` : str;
+                };
+                if (typeof startDate === 'string') startDate = new Date(fixStrDate(startDate));
+                if (typeof endDate   === 'string') endDate   = new Date(fixStrDate(endDate));
+
                 try {
-                    if (row[4]) startDate = new Date(row[4]);
-                    if (row[5]) endDate = new Date(row[5]);
                     if (startDate && endDate && !isNaN(startDate) && !isNaN(endDate)) {
-                        duration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+                        duration = Math.ceil((endDate - startDate) / (1000*60*60*24)) + 1;
                         if (duration < 1 || duration > 365) duration = 7;
                     }
-                } catch (e) {
-                    // Keep defaults
-                }
+                } catch(e){}
                 
                 const venueName = row[3] || 'Unknown';
                 
